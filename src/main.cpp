@@ -105,6 +105,92 @@ void ECatMasterDev_UnRegisterInEvent(CIFXHANDLE hChannel)
   }
 }
 // RegisterInEvent 运行之后
+//void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataLen*/, void * /*pvData*/, void * pvUser)
+//{
+//  static auto prev_loop_entry = std::chrono::high_resolution_clock::now();
+//  auto now = std::chrono::high_resolution_clock::now();
+//  loop_dt = now - prev_loop_entry;
+//  prev_loop_entry = now;
+//  CIFXHANDLE hChannel = static_cast<SYNC_CALLBACK_DATA *>(pvUser)->hDevice;
+//
+//  int32_t ErrorCode = Get_Mot_Data(hChannel);
+//  if(ErrorCode != CIFX_NO_ERROR)
+//  {
+//    ulReadErr++;
+//  }
+//  if(!controllerReady)
+//  {
+//    mc_rtc::log::warning("Previous callback didn't finish running before this is called");
+//    ulReadReq++;
+//    return;
+//  }
+//  controllerReady = false;
+//  for(size_t i = 0; i < MOT_ID; i++)
+//  {
+//    encoders[i] = Mot2JointPosition(MOT_Recive[i].Position, i);
+//    velocities[i] = Mot2JointVelocity(MOT_Recive[i].Velocity, encoders[i], i);
+//    currents[i] = MOT_Recive[i].Current;
+//    torques[i] = MOT_Recive[i].Torque;
+//  }
+//  for(size_t i = MOT_ID; i < controller->robot().refJointOrder().size(); ++i)
+//  {
+//    encoders[i] = 0;
+//    velocities[i] = 0;
+//    currents[i] = 0;
+//    torques[i] = 0;
+//  }
+//  updateWrenches();
+//  controller->setEncoderValues(encoders);
+//  controller->setEncoderVelocities(velocities);
+//  controller->setWrenches(wrenches);
+//  if(controller->run())
+//  {
+//    const auto & robot = controller->robot();
+//    const auto & rjo = robot.refJointOrder();
+//    for(uint32_t i = 0; i < MOT_ID; ++i)
+//    {
+//      const auto & j = rjo[i];
+//      auto jCommand = robot.mbc().q[robot.jointIndexByName(j)][0];
+//      double error = rad2deg(jCommand - encoders[i]);
+//      if(fabs(error) > JOINT_MAX_ERROR)
+//      {
+//        ERROR_COUNT[i]++;
+//        if(ERROR_COUNT[i] >= JOINT_MAX_ERROR_COUNT)
+//        {
+//          mc_rtc::log::critical(
+//              "Joint error on {} exceed 8 degrees, servo OFF for safety (command: {:0.2f}, actual: {:0.2f})", j,
+//              rad2deg(jCommand), rad2deg(encoders[i]));
+//          controller->running = false;
+//        }
+//      }
+//      else
+//      {
+//        ERROR_COUNT[i] = 0;
+//      }
+//      auto motor = Joint2Mot(jCommand, i);
+//      encoders_command[i] = motor;
+//      MOT_Send[i].Position = motor;
+//      Set_Position(i, motor);
+//    }
+//  }
+//
+//  if(controller->running)
+//  {
+//    ErrorCode = IO_WriteZM(hChannel);
+//    if(ErrorCode != CIFX_NO_ERROR)
+//    {
+//      ulWriteErr++;
+//    }
+//  }
+//  else
+//  {
+//    Power_OFF_AllMoter(hChannel, MOT_ID);
+//    StopFlg = 1;
+//  }
+//  ulReadReq++;
+//  controllerReady = true;
+//}
+
 void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataLen*/, void * /*pvData*/, void * pvUser)
 {
   static auto prev_loop_entry = std::chrono::high_resolution_clock::now();
@@ -150,7 +236,7 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
     for(uint32_t i = 0; i < MOT_ID; ++i)
     {
       const auto & j = rjo[i];
-      auto jCommand = robot.mbc().q[robot.jointIndexByName(j)][0];
+      auto jCommand = robot.mbc().jointTorque[robot.jointIndexByName(j)][0];
       double error = rad2deg(jCommand - encoders[i]);
       if(fabs(error) > JOINT_MAX_ERROR)
       {
@@ -167,10 +253,10 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
       {
         ERROR_COUNT[i] = 0;
       }
-      auto motor = Joint2Mot(jCommand, i);
+      auto motor = JointTorque2MotorCurrent(jCommand, i);
       encoders_command[i] = motor;
-      MOT_Send[i].Position = motor;
-      Set_Position(i, motor);
+      MOT_Send[i].Torque = motor;
+      Set_Torque(i, motor);
     }
   }
 
@@ -302,7 +388,7 @@ int main()
   SDODInit_All(hChannel, MOT_ID);
 
   init_Motor(hChannel);
-  ZeroPosition(hChannel, MOT_ID);
+  ZeroPosition(hChannel, MOT_ID);// TODO COMMENT THIS
   Get_Mot_Data(hChannel);
   Get_Mot_Data(hChannel);
 
@@ -310,7 +396,7 @@ int main()
 
   for(i = 0; i < MOT_ID; i++)
   {
-    Set_Mode_CSP(i);
+    Set_Mode_CST(i);
   }
   Servo_On_All(hChannel, MOT_ID);
   Get_Mot_Data(hChannel);

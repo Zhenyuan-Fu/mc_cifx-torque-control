@@ -42,6 +42,40 @@ int32_t Joint2Mot(double pos, size_t id)
   }
 }
 
+int16_t KneeJoint2MotorTorque(double tau)
+{
+  float Kt_knee = 0.1182;
+  return (int16_t)(100.0 * tau / (0.054 * 6282.7 * (0.3 + 0.054) * sin(3.1415 + tau - 15.0 / 180.0 * 3.1415)) * 10
+                   * (sqrt(2.0 * 0.3 * 0.054 - 2.0 * 0.054 * 0.054 * cos(3.1415 + tau - 15.0 / 180.0 * 3.1415)
+                           + 0.3 * 0.3 + 2.0 * 0.054 * 0.054 -
+                           2.0 * 0.3 * 0.054 * cos(3.1415 + tau - 15.0 / 180.0 * 3.1415))) / Kt_knee);
+}
+
+int16_t AnkleYJoint2MotorTorque(double tau)
+{
+  float Kt_ankle = 0.0893;
+  return (int16_t)(100.0 * tau / (0.04*6282.7*(0.29 + 0.04)*sin(tau + 90.0 / 180.0 * 3.1415)) * 5 *
+                       (sqrt(2.0 * 0.29*0.04 - 2.0 * 0.04*0.04 * cos(tau + 90.0 / 180.0 * 3.1415) +
+                             0.29*0.29 + 2 * 0.04*0.04 -
+                         2.0 * 0.29*0.04*cos(tau + 90.0 / 180.0 * 3.1415))) / Kt_ankle);
+}
+int16_t JointTorque2MotorCurrent(double tau, size_t id)
+{
+  float Kt_hip = 0.1182;
+  // Knee: jointTorque -->> motorCurrent
+  if(id == RIGHT_LEG_KNEE_JOINT_INDEX || id == LEFT_LEG_KNEE_JOINT_INDEX){
+    return KneeJoint2MotorTorque(tau);
+  }
+  // Ankle_y: jointTorque -->> motorCurrent
+  if(id == RIGHT_LEG_ANKLE_Y_JOINT_INDEX || id == LEFT_LEG_ANKLE_Y_JOINT_INDEX){
+    return AnkleYJoint2MotorTorque(tau);
+  }
+  // Others(arms, hips, ankle_x): jointTorque -->> motorCurrent
+  if(nDirection_Pos[id] == 1){
+    return (100.0 * tau / 25 / Kt_hip);// mA
+  }
+}
+
 double Mot2Joint(int32_t motor, size_t id)
 {
   if(nDirection_Pos[id] == 1)
