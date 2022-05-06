@@ -25,8 +25,8 @@ struct ForceSensor FS_Recive[ForceSensor_COUNT];
 struct ForceSensor InitFS_Recive[ForceSensor_COUNT];
 
 // !! Reduction ratio for each motor
-double nGear[MOT_ID] = {17.43, 48.3, 25.0, 0.0, 0.0, 1.0,
-                        17.43, 48.3, 25.0, 0.0, 0.0, 1.0};
+double nGear[MOT_ID] = {17.43, 48.3, 25.0, 1.0, 1.0, 1.0,
+                        17.43, 48.3, 25.0, 1.0, 1.0, 1.0};// shoulder, hip1, hip2, knee, ankle_y, ankle_x
 // !! Encounter count for each motor
 //int32_t nEncoder[MOT_ID] = {262144, 262144, 262144, 262144, 262144, 262144, 262144, 262144, 4096, 4096};
 //int32_t nEncoder[MOT_ID] = {4000, 4000,4000, 4000, 262144, 262144, 262144, 262144, 4096, 4096};

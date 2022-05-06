@@ -72,7 +72,7 @@ int16_t JointTorque2MotorCurrent(double tau, size_t id)
   }
   // Others(arms, hips, ankle_x): jointTorque -->> motorCurrent
   if(nDirection_Pos[id] == 1){
-    return (100.0 * tau / 25 / Kt_hip);// mA
+    return (100.0 * tau / nGear[id] / Kt_hip);// mA
   }
 }
 

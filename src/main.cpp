@@ -48,6 +48,11 @@ std::vector<double> encoders_command;
 // !! Index to force sensor name
 std::vector<std::string> forceSensors = {"LeftFootForceSensor", "RightFootForceSensor","LegSensor"};
 std::map<std::string, sva::ForceVecd> wrenches;
+
+// joints kp kd setting (all same now)
+double joints_kp = 200;
+double joints_kd = 20;
+
 // Safety parameter: if the difference between the command and the encoder exceeds this, servo-off
 static constexpr double JOINT_MAX_ERROR = 8; // degree
 static constexpr size_t JOINT_MAX_ERROR_COUNT = 50;
@@ -191,6 +196,14 @@ void ECatMasterDev_UnRegisterInEvent(CIFXHANDLE hChannel)
 //  controllerReady = true;
 //}
 
+double jointPD(double q_ref, double q, double qdot_ref, double qdot)
+{
+  double p_error = q_ref -q;
+  double v_error = qdot_ref - qdot;
+  double ret = (joints_kp * p_error + joints_kd * v_error);
+  return ret;
+}
+
 void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataLen*/, void * /*pvData*/, void * pvUser)
 {
   static auto prev_loop_entry = std::chrono::high_resolution_clock::now();
@@ -236,8 +249,17 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
     for(uint32_t i = 0; i < MOT_ID; ++i)
     {
       const auto & j = rjo[i];
-      auto jCommand = robot.mbc().jointTorque[robot.jointIndexByName(j)][0];
-      double error = rad2deg(jCommand - encoders[i]);
+      auto cifx_next_ctrl_q = robot.mbc().q[robot.jointIndexByName(j)][0];
+      auto cifx_next_ctrl_alpha = robot.mbc().alpha[robot.jointIndexByName(j)][0];
+      auto cifx_next_ctrl_torque = robot.mbc().jointTorque[robot.jointIndexByName(j)][0];
+
+      double q_ref = cifx_next_ctrl_q;
+      double alpha_ref = cifx_next_ctrl_alpha;
+
+      double jCommand  = cifx_next_ctrl_torque + jointPD(q_ref, encoders[i], alpha_ref, velocities[i]);
+
+      double error = rad2deg(cifx_next_ctrl_q - encoders[i]);
+
       if(fabs(error) > JOINT_MAX_ERROR)
       {
         ERROR_COUNT[i]++;
