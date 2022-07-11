@@ -47,7 +47,7 @@ struct ForceSensor
 #define IMU_StartAddress MOT_ID * NO_R_BYTE
 #define IMU_BYTE 36
 
-#define ForceSensor_COUNT 3
+#define ForceSensor_COUNT 2
 #define ForceSensorStartAddress (MOT_ID * NO_R_BYTE + IMU_COUNT * IMU_BYTE)
 #define ForceSensor_BYTE (6 * 4 + 2)
 

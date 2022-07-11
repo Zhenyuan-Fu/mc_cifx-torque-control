@@ -33,7 +33,7 @@ extern "C"
 #include <mc_control/mc_global_controller.h>
 #include <mc_rtc/version.h>
 
-using TableJointData_t = std::array<std::tuple<std::string, double, double, double, double>, MOT_ID>;
+using TableJointData_t = std::array<std::tuple<std::string, double, double, double, double, double>, MOT_ID>;
 using TableForceData_t =
     std::array<std::tuple<std::string, double, double, double, double, double, double>, ForceSensor_COUNT>;
 
@@ -45,8 +45,10 @@ std::vector<double> torques;
 std::vector<double> encoders;
 std::vector<double> velocities;
 std::vector<double> encoders_command;
+std::vector<double> torques_command;
 // !! Index to force sensor name
-std::vector<std::string> forceSensors = {"LeftFootForceSensor", "RightFootForceSensor","LegSensor"};
+// std::vector<std::string> forceSensors = {"LeftFootForceSensor", "RightFootForceSensor","LegSensor"};
+std::vector<std::string> forceSensors = {"LeftFootForceSensor", "RightFootForceSensor"};
 std::map<std::string, sva::ForceVecd> wrenches;
 
 // joints kp kd setting (all same now)
@@ -267,7 +269,7 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
         {
           mc_rtc::log::critical(
               "Joint error on {} exceed 8 degrees, servo OFF for safety (command: {:0.2f}, actual: {:0.2f})", j,
-              rad2deg(jCommand), rad2deg(encoders[i]));
+              rad2deg(q_ref), rad2deg(encoders[i]));
           controller->running = false;
         }
       }
@@ -277,6 +279,7 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
       }
       auto motor = JointTorque2MotorCurrent(jCommand, i);
       encoders_command[i] = motor;
+      torques_command[i] = jCommand;
       MOT_Send[i].Torque = motor;
       Set_Torque(i, motor);
     }
@@ -397,6 +400,7 @@ int main()
   controller->running = true;
   encoders.resize(controller->robot().refJointOrder().size());
   encoders_command.resize(controller->robot().refJointOrder().size());
+  torques_command.resize(controller->robot().refJointOrder().size());
   velocities.resize(controller->robot().refJointOrder().size());
   currents.resize(controller->robot().refJointOrder().size());
   torques.resize(controller->robot().refJointOrder().size());
@@ -404,13 +408,13 @@ int main()
   controller->controller().logger().addLogEntry("currentIn", [&]() -> const std::vector<double> & { return currents; });
   controller->controller().logger().addLogEntry("torqueIn", [&]() -> const std::vector<double> & { return torques; });
   controller->controller().logger().addLogEntry("motorOut", [&]() -> const std::vector<double> & { return encoders_command; });
-
+  controller->controller().logger().addLogEntry("torqueCmdOut", [&]() -> const std::vector<double> & { return torques_command; });
   uint32_t i;
   InitCommunication(&hDriver, &hChannel);
   SDODInit_All(hChannel, MOT_ID);
 
   init_Motor(hChannel);
-  ZeroPosition(hChannel, MOT_ID);// TODO COMMENT THIS
+//  ZeroPosition(hChannel, MOT_ID);// TODO COMMENT THIS
   Get_Mot_Data(hChannel);
   Get_Mot_Data(hChannel);
 
@@ -452,7 +456,7 @@ int main()
                                              mc_rtc::gui::Button("Servo off", [&]() { controller->running = false; }));
   controller->controller().gui()->addElement(
       {"Robot state"},
-      mc_rtc::gui::Table("Status", {"Joint", "Motor command", "Encoder", "Command", "Speed"}, {"{}", "{:0.2f}", "{:0.2f}", "{:0.2f}", "{:0.2f}"},
+      mc_rtc::gui::Table("Status", {"Joint", "Torque Command", "PD_Torque Command", "Encoder", "Command", "Speed"}, {"{}", "{:0.2f}", "{:0.2f}", "{:0.2f}", "{:0.2f}", "{:0.2f}"},
                          [&]() -> const TableJointData_t & {
                            static TableJointData_t data;
                            const auto & ctl = controller->controller();
@@ -461,8 +465,10 @@ int main()
                            {
                              const auto & j = ctl.robot().refJointOrder()[i];
                              auto jIndex = robot.jointIndexByName(j);
+                             auto joint_torque = robot.mbc().jointTorque[jIndex][0];
+                             auto pd_torque_command = torques_command[i];
                              auto command = robot.mbc().q[jIndex][0];
-                             data[i] = {j, encoders_command[i], rad2deg(encoders[i]), rad2deg(command), rad2deg(velocities[i])};
+                             data[i] = {j, joint_torque,  pd_torque_command, rad2deg(encoders[i]), rad2deg(command), rad2deg(velocities[i])};
                            }
                            return data;
                          }),
