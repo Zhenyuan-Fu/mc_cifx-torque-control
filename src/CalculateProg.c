@@ -6,11 +6,17 @@
 #include <math.h>
 #include <string.h>
 
-// These joint index must be handled with care
+// todo These joint index must be handled with care !!!!!!
+// 12dof
 #define RIGHT_LEG_KNEE_JOINT_INDEX 3
 #define LEFT_LEG_KNEE_JOINT_INDEX 9
 #define RIGHT_LEG_ANKLE_Y_JOINT_INDEX 4
 #define LEFT_LEG_ANKLE_Y_JOINT_INDEX 10
+// 10dof
+//#define RIGHT_LEG_KNEE_JOINT_INDEX 3
+//#define LEFT_LEG_KNEE_JOINT_INDEX 8
+//#define RIGHT_LEG_ANKLE_Y_JOINT_INDEX 4
+//#define LEFT_LEG_ANKLE_Y_JOINT_INDEX 9
 
 int32_t KneeJoint2MotorPosition(double pos)
 {
@@ -54,9 +60,9 @@ int16_t KneeJoint2MotorTorque(double tau)
 int16_t AnkleYJoint2MotorTorque(double tau)
 {
   float Kt_ankle = 0.0893;
-  return (int16_t)(100.0 * tau / (0.04*6282.7*(0.29 + 0.04)*sin(tau + 90.0 / 180.0 * 3.1415)) * 5 *
+  return (int16_t)(100.0 * tau / (0.04*6282.7*(0.29 + 0.04)*sin(tau + 90.0 / 180.0 * 3.1415)) * 5.0 *
                        (sqrt(2.0 * 0.29*0.04 - 2.0 * 0.04*0.04 * cos(tau + 90.0 / 180.0 * 3.1415) +
-                             0.29*0.29 + 2 * 0.04*0.04 -
+                             0.29*0.29 + 2.0 * 0.04*0.04 -
                          2.0 * 0.29*0.04*cos(tau + 90.0 / 180.0 * 3.1415))) / Kt_ankle);
 }
 int16_t JointTorque2MotorCurrent(double tau, size_t id)
@@ -80,11 +86,11 @@ double Mot2Joint(int32_t motor, size_t id)
 {
   if(nDirection_Pos[id] == 1)
   {
-    return 2 * M_PI * motor / (double)(nGear[id] * nEncoder[id]);
+    return 2.0 * M_PI * motor / ((double)(nGear[id]) * (double)(nEncoder[id]));
   }
   else
   {
-    return -2 * M_PI * motor / (double)(nGear[id] * nEncoder[id]);
+    return -2.0 * M_PI * motor / ((double)(nGear[id]) * (double)(nEncoder[id]));
   }
 }
 

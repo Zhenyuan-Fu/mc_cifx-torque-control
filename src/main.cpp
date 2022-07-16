@@ -56,7 +56,7 @@ double joints_kp = 200;
 double joints_kd = 20;
 
 // Safety parameter: if the difference between the command and the encoder exceeds this, servo-off
-static constexpr double JOINT_MAX_ERROR = 8; // degree
+static constexpr double JOINT_MAX_ERROR = 80; // degree
 static constexpr size_t JOINT_MAX_ERROR_COUNT = 50;
 static size_t ERROR_COUNT[MOT_ID] = {0};
 
@@ -414,6 +414,7 @@ int main()
   SDODInit_All(hChannel, MOT_ID);
 
   init_Motor(hChannel);
+
 //  ZeroPosition(hChannel, MOT_ID);// TODO COMMENT THIS
   Get_Mot_Data(hChannel);
   Get_Mot_Data(hChannel);
