@@ -52,11 +52,11 @@ std::vector<std::string> forceSensors = {"LeftFootForceSensor", "RightFootForceS
 std::map<std::string, sva::ForceVecd> wrenches;
 
 // joints kp kd setting (all same now)
-double joints_kp = 200;
-double joints_kd = 20;
+double joints_kp = 40;
+double joints_kd = 6;
 
 // Safety parameter: if the difference between the command and the encoder exceeds this, servo-off
-static constexpr double JOINT_MAX_ERROR = 80; // degree
+static constexpr double JOINT_MAX_ERROR = 50; // degree
 static constexpr size_t JOINT_MAX_ERROR_COUNT = 50;
 static size_t ERROR_COUNT[MOT_ID] = {0};
 
@@ -259,6 +259,12 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
       double alpha_ref = cifx_next_ctrl_alpha;
 
       double jCommand  = cifx_next_ctrl_torque + jointPD(q_ref, encoders[i], alpha_ref, velocities[i]);
+
+      if(jCommand > 30.0){
+        jCommand = 30;
+      }else if(jCommand < -30){
+        jCommand = -30;
+      }
 
       double error = rad2deg(cifx_next_ctrl_q - encoders[i]);
 
