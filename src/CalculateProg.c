@@ -182,3 +182,11 @@ float convert(uint32_t i)
   memcpy(&out, &i, sizeof(i));
   return out;
 }
+
+float deg2rad(float deg)
+{
+  float rad;
+  rad=deg*3.14159265353/180.0;
+  return rad;
+  //return (float)(deg*3.14159265353/180.0);
+}

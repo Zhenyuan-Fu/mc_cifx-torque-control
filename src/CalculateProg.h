@@ -16,3 +16,6 @@ double Mot2JointVelocity(int32_t motor_velocity, double joint_angle, size_t id);
 
 // Binary conversion from a uint32_t to a float
 float convert(uint32_t i);
+
+//convertion from degree to radian
+float deg2rad(float deg);

@@ -16,6 +16,7 @@ _Static_assert(sizeof(struct Motor_R) == NO_R_BYTE, "Wrong definition of NO_R_BY
 _Static_assert(offsetof(struct ForceSensor, status) == 0, "Weird padding of ForceSensor");
 _Static_assert(sizeof(struct ForceSensor) - offsetof(struct ForceSensor, FX) == ForceSensor_BYTE - 2,
                "Weird padding of ForceSensor");
+_Static_assert(sizeof(struct IMU_MTi300_R) == IMU_BYTE, "Wrong definition of IMU_BYTE");
 
 struct Motor_S MOT_Send[MOT_ID];
 // params of motor when receiving data 电机接收参数
@@ -23,6 +24,8 @@ struct Motor_R MOT_Recive[MOT_ID];
 // Force sensors
 struct ForceSensor FS_Recive[ForceSensor_COUNT];
 struct ForceSensor InitFS_Recive[ForceSensor_COUNT];
+// IMU(s)
+struct IMU_MTi300_R IMU_Recive[IMU_COUNT];
 
 // !! Reduction ratio for each motor
 // 12dof
@@ -98,8 +101,9 @@ void Set_Torque(uint32_t S_ID, int16_t Target)
 /*****************************************************************************/
 void Set_Mode(uint32_t S_ID, uint16_t Mode)
 {
+  MOT_Send[S_ID].Mode = Mode;
   abSendData[S_ID * NO_S_BYTE + OperationModeRel] = Mode & 0x000000FF;
-  abSendData[S_ID * NO_S_BYTE + OperationModeRel] = (Mode >> 8) & 0x000000FF;
+  abSendData[S_ID * NO_S_BYTE + OperationModeRel + 1] = (Mode >> 8) & 0x000000FF;
 }
 /*****************************************************************************/
 // 设置每个电机的加速度
@@ -195,6 +199,11 @@ int32_t Get_Mot_Data(CIFXHANDLE hChannel)
     {
       memcpy((MOT_Recive + i), (abRecvData + i * NO_R_BYTE), NO_R_BYTE);
     }
+  }
+  for(i = 0; i < IMU_COUNT; i++)
+  {
+    memcpy(&IMU_Recive[i], &abRecvData[IMU_StartAddress + i * IMU_BYTE], IMU_BYTE);
+    //printf("%08X;\n", IMU_Recive[i].dwYaw);
   }
   for(size_t j = 0; j < ForceSensor_COUNT; ++j)
   {

@@ -39,6 +39,20 @@ struct ForceSensor
   uint32_t TZ;
 };
 
+// Data received from the IMU
+struct IMU_MTi300_R
+{
+  uint32_t dwRoll;
+  uint32_t dwPitch;
+  uint32_t dwYaw;
+  uint32_t dwAx;
+  uint32_t dwAy;
+  uint32_t dwAz;
+  uint32_t dwWx;
+  uint32_t dwWy;
+  uint32_t dwWz;
+};
+
 #define MOT_ID 12 // !! number of motors 4*2+2
 #define NO_S_BYTE 30
 #define NO_R_BYTE 16
@@ -214,6 +228,7 @@ extern struct Motor_S MOT_Send[MOT_ID];
 extern struct Motor_R MOT_Recive[MOT_ID];
 extern struct ForceSensor FS_Recive[ForceSensor_COUNT];
 extern struct ForceSensor InitFS_Recive[ForceSensor_COUNT];
+extern struct IMU_MTi300_R IMU_Recive[IMU_COUNT];
 extern double nGear[MOT_ID];
 extern int32_t nEncoder[MOT_ID];
 extern int16_t nDirection_Pos[MOT_ID];

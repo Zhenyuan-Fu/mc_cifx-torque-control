@@ -31,11 +31,15 @@ extern "C"
 }
 
 #include <mc_control/mc_global_controller.h>
+#include <mc_filter/LowPass.h>
 #include <mc_rtc/version.h>
 
 using TableJointData_t = std::array<std::tuple<std::string, double, double, double, double, double>, MOT_ID>;
 using TableForceData_t =
     std::array<std::tuple<std::string, double, double, double, double, double, double>, ForceSensor_COUNT>;
+using TableIMUData_t =
+    std::array<std::tuple<std::string, double, double, double, double, double, double, double, double, double>,
+               IMU_COUNT>;
 
 CIFXHANDLE hDriver = nullptr;
 CIFXHANDLE hChannel = nullptr;
@@ -46,23 +50,60 @@ std::vector<double> encoders;
 std::vector<double> velocities;
 std::vector<double> encoders_command;
 std::vector<double> torques_command;
+// !! Index to IMU name
+std::vector<std::string> bodySensors = {"Accelerometer"};
+mc_control::MCGlobalController::QuaternionMap bodySensorsOrientation;
+std::map<std::string, Eigen::Vector3d> bodySensorsAngularVelocity;
+std::map<std::string, Eigen::Vector3d> bodySensorsLinearAcceleration;
 // !! Index to force sensor name
 // std::vector<std::string> forceSensors = {"LeftFootForceSensor", "RightFootForceSensor","LegSensor"};
 std::vector<std::string> forceSensors = {"LeftFootForceSensor", "RightFootForceSensor"};
+struct ForceFilter : public mc_filter::LowPass<sva::ForceVecd>
+{
+  static constexpr double dt = 0.003;
+  static constexpr double period = 0.03;
+  ForceFilter() : mc_filter::LowPass<sva::ForceVecd>(dt, period) {}
+};
+std::array<ForceFilter, ForceSensor_COUNT> forceFilters;
 std::map<std::string, sva::ForceVecd> wrenches;
-
+// arm
 // joints kp kd setting (all same now)
-double joints_kp = 40;
-double joints_kd = 6;
+//double joints_kp = 220;
+//double joints_kd = 14;
+// ankle
+double joints_kp = 100;
+double joints_kd = 5.;
 
 // Safety parameter: if the difference between the command and the encoder exceeds this, servo-off
-static constexpr double JOINT_MAX_ERROR = 50; // degree
+static constexpr double JOINT_MAX_ERROR = 10; // degree
 static constexpr size_t JOINT_MAX_ERROR_COUNT = 50;
 static size_t ERROR_COUNT[MOT_ID] = {0};
+
+std::atomic<bool> zero_imu{false};
+std::atomic<bool> transpose_imu_raw_reading{false};
+std::atomic<bool> use_imu_offset{true};
+std::atomic<bool> use_imu_offset_right{false};
+Eigen::Matrix3d imu_origin = Eigen::Matrix3d::Identity();
+Eigen::Matrix3d imu_reading = Eigen::Matrix3d::Identity();
+Eigen::Vector3d imu_offset{M_PI, 0, 0};
+Eigen::Vector3d imu_multiplier{1.0, 1.0, 1.0};
+
+Eigen::Vector3d imu_vel_offset = Eigen::Vector3d::Zero();
+Eigen::Vector3d imu_acc_offset = Eigen::Vector3d::Zero();
 
 static std::chrono::duration<double, std::milli> loop_dt{0};
 
 std::atomic<bool> controllerReady{false};
+
+void convert(const ForceSensor & fs, sva::ForceVecd & out)
+{
+  out.force().x() = convert(fs.FX);
+  out.force().y() = convert(fs.FY);
+  out.force().z() = convert(fs.FZ);
+  out.couple().x() = convert(fs.TX);
+  out.couple().y() = convert(fs.TY);
+  out.couple().z() = convert(fs.TZ);
+}
 
 void updateWrenches()
 {
@@ -77,6 +118,65 @@ void updateWrenches()
     wrench.couple().x() = convert(fs.TX) - convert(init.TX);
     wrench.couple().y() = convert(fs.TY) - convert(init.TY);
     wrench.couple().z() = convert(fs.TZ) - convert(init.TZ);
+  }
+}
+
+void updateBodySensors()
+{
+  Eigen::Vector3d rpy;
+  for(size_t i = 0; i < IMU_COUNT; ++i)
+  {
+    const auto & bs = bodySensors[i];
+    const auto & IMU = IMU_Recive[i];
+    // Orientation
+    {
+      auto & ori = bodySensorsOrientation[bs];
+      rpy << deg2rad(convert(IMU.dwRoll)), deg2rad(convert(IMU.dwPitch)), deg2rad(convert(IMU.dwYaw));
+      rpy.x() *= imu_multiplier.x();
+      rpy.y() *= imu_multiplier.y();
+      rpy.z() *= imu_multiplier.z();
+      Eigen::Matrix3d ori_mat = mc_rbdyn::rpyToMat(rpy);
+      if(transpose_imu_raw_reading)
+      {
+        ori_mat = ori_mat.transpose();
+      }
+      if(use_imu_offset)
+      {
+        if(use_imu_offset_right)
+        {
+          ori_mat = ori_mat * mc_rbdyn::rpyToMat(imu_offset);
+        }
+        else
+        {
+          ori_mat = mc_rbdyn::rpyToMat(imu_offset) * ori_mat;
+        }
+      }
+      if(zero_imu)
+      {
+        zero_imu = false;
+        //imu_origin = ori_mat.transpose();
+      }
+      ori_mat = imu_origin * ori_mat;
+      imu_reading = ori_mat;
+      ori = Eigen::Quaterniond(ori_mat).normalized();
+      // //printf("%08X;\n", IMU.dwYaw);
+      // printf("\nroll:%f\n",convert(IMU.dwRoll));
+      // printf("pitch:%f\n",convert(IMU.dwPitch));
+      // printf("yaw:%f\n",convert(IMU.dwYaw));
+    }
+    // Angulary velocity
+    {
+      auto & vel = bodySensorsAngularVelocity[bs];
+      vel << convert(IMU.dwWx), convert(IMU.dwWy), convert(IMU.dwWz);
+      vel = imu_origin * (vel - imu_vel_offset);
+    }
+    // Liner acceleration
+    {
+      auto & acc = bodySensorsLinearAcceleration[bs];
+      acc << convert(IMU.dwAx), convert(IMU.dwAy), convert(IMU.dwAz);
+      acc = imu_origin * (acc - imu_acc_offset);
+      // printf("a_z:%f",convert(IMU.dwAz));
+    }
   }
 }
 
@@ -240,10 +340,23 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
     currents[i] = 0;
     torques[i] = 0;
   }
+
+  // TODO care
+//  for(uint32_t i = 0; i < MOT_ID; i++)
+//  {
+//    Set_Mode_CST(i);
+//    std::cout << "change the Mode" << std::endl;
+//  }
+
+  updateBodySensors();
   updateWrenches();
   controller->setEncoderValues(encoders);
   controller->setEncoderVelocities(velocities);
   controller->setWrenches(wrenches);
+  controller->setSensorOrientations(bodySensorsOrientation);
+  controller->setSensorAngularVelocities(bodySensorsAngularVelocity);
+  controller->setSensorLinearAccelerations(bodySensorsLinearAcceleration);
+
   if(controller->run())
   {
     const auto & robot = controller->robot();
@@ -260,11 +373,11 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
 
       double jCommand  = cifx_next_ctrl_torque + jointPD(q_ref, encoders[i], alpha_ref, velocities[i]);
 
-      if(jCommand > 30.0){
-        jCommand = 30;
-      }else if(jCommand < -30){
-        jCommand = -30;
-      }
+//      if(jCommand > 150.0){
+//        jCommand = 150;
+//      }else if(jCommand < -150){
+//        jCommand = -150;
+//      }
 
       double error = rad2deg(cifx_next_ctrl_q - encoders[i]);
 
@@ -286,14 +399,26 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
       auto motor = JointTorque2MotorCurrent(jCommand, i);
       encoders_command[i] = motor;
       torques_command[i] = jCommand;
+
+      if(motor > 2000.0){
+        motor = 2000;
+      }else if(motor < -2000){
+        motor = -2000;
+      }
+
       MOT_Send[i].Torque = motor;
       Set_Torque(i, motor);
+      //
+      //if (MOT_Recive[i].ModeDis == ProPositionMode){
+//        std::cout << "MOT Mode = " << MOT_Recive[i].ModeDis << std::endl;
+      //}
     }
   }
 
   if(controller->running)
   {
     ErrorCode = IO_WriteZM(hChannel);
+//    std::cout << "MOT_Send[i].Mode == ProPositionMode" << MOT_Send[0].Mode << std::endl;
     if(ErrorCode != CIFX_NO_ERROR)
     {
       ulWriteErr++;
@@ -361,6 +486,38 @@ void RegisterInEvent(CIFXHANDLE hChannel)
   }
 }
 
+void init_ForceSensor_Filters()
+{
+  sva::ForceVecd tmp;
+  for(size_t i = 0; i < ForceSensor_COUNT; ++i)
+  {
+    convert(InitFS_Recive[i], tmp);
+    forceFilters[i].reset(tmp);
+  }
+}
+
+void init_IMU_offset(CIFXHANDLE hChannel)
+{
+  size_t measures = 300;
+  Eigen::Vector3d imu_vel;
+  Eigen::Vector3d imu_vel_sum;
+  Eigen::Vector3d imu_acc;
+  Eigen::Vector3d imu_acc_sum;
+  for(size_t i = 0; i < measures; ++i)
+  {
+    Get_Mot_Data(hChannel);
+    const auto & IMU = IMU_Recive[0];
+    imu_vel << convert(IMU.dwWx), convert(IMU.dwWy), convert(IMU.dwWz);
+    imu_vel_sum += imu_vel;
+    imu_acc << convert(IMU.dwAx), convert(IMU.dwAy), convert(IMU.dwAz);
+    imu_acc_sum += imu_acc;
+  }
+  imu_vel_offset = imu_vel_sum / measures;
+  imu_acc_offset = imu_acc_sum / measures;
+  mc_rtc::log::info("imu velocity offset: {}", imu_vel_offset.transpose());
+  mc_rtc::log::info("imu acceleration offset: {}", imu_acc_offset.transpose());
+}
+
 // 当前位置设为零点
 void ZeroPosition(CIFXHANDLE hChannel, uint32_t Mot_NumTemp)
 {
@@ -415,6 +572,18 @@ int main()
   controller->controller().logger().addLogEntry("torqueIn", [&]() -> const std::vector<double> & { return torques; });
   controller->controller().logger().addLogEntry("motorOut", [&]() -> const std::vector<double> & { return encoders_command; });
   controller->controller().logger().addLogEntry("torqueCmdOut", [&]() -> const std::vector<double> & { return torques_command; });
+
+  //
+  controller->controller().logger().addLogEntry("IMU_roll", []() { return IMU_Recive[0].dwRoll; });
+  controller->controller().logger().addLogEntry("IMU_pitch", []() { return IMU_Recive[0].dwPitch; });
+  controller->controller().logger().addLogEntry("IMU_yaw", []() { return IMU_Recive[0].dwYaw; });
+  controller->controller().logger().addLogEntry("IMU_Ax", []() { return IMU_Recive[0].dwAx; });
+  controller->controller().logger().addLogEntry("IMU_Ay", []() { return IMU_Recive[0].dwAy; });
+  controller->controller().logger().addLogEntry("IMU_Az", []() { return IMU_Recive[0].dwAz; });
+  controller->controller().logger().addLogEntry("IMU_Wx", []() { return IMU_Recive[0].dwWx; });
+  controller->controller().logger().addLogEntry("IMU_Wy", []() { return IMU_Recive[0].dwWy; });
+  controller->controller().logger().addLogEntry("IMU_Wz", []() { return IMU_Recive[0].dwWz; });
+
   uint32_t i;
   InitCommunication(&hDriver, &hChannel);
   SDODInit_All(hChannel, MOT_ID);
@@ -436,6 +605,9 @@ int main()
   Get_Mot_Data(hChannel);
 
   init_ForceSensor(hChannel);
+  init_ForceSensor_Filters();
+
+  init_IMU_offset(hChannel);
 
   std::vector<double> initq;
   for(size_t i = 0; i < MOT_ID; ++i)
@@ -491,7 +663,22 @@ int main()
                              data[i] = {forceSensors[i], f.x(), f.y(), f.z(), t.x(), t.y(), t.z()};
                            }
                            return data;
-                         }));
+                         }),
+      mc_rtc::gui::Table(
+          "IMU", {"Sensor", "R", "P", "Y", "WX", "WY", "WZ", "AX", "AY", "AZ"},
+          {"{}", "{:0.2f}", "{:0.2f}", "{:0.2f}", "{:0.2f}", "{:0.2f}", "{:0.2f}", "{:0.2f}", "{:0.2f}", "{:0.2f}"},
+          [&]() -> const TableIMUData_t & {
+            static TableIMUData_t data;
+            for(size_t i = 0; i < IMU_COUNT; ++i)
+            {
+              const auto & bs = bodySensors[i];
+              const auto & ori = mc_rbdyn::rpyFromQuat(bodySensorsOrientation[bs]);
+              const auto & w = bodySensorsAngularVelocity[bs];
+              const auto & acc = bodySensorsLinearAcceleration[bs];
+              data[i] = {bs, ori.x(), ori.y(), ori.z(), w.x(), w.y(), w.z(), acc.x(), acc.y(), acc.z()};
+            }
+            return data;
+          }));
   StopFlg = 0;
 
   ulWriteErr = 0;
