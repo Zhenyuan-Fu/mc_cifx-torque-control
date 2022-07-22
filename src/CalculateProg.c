@@ -6,18 +6,6 @@
 #include <math.h>
 #include <string.h>
 
-// todo These joint index must be handled with care !!!!!!
-// 12dof
-#define RIGHT_LEG_KNEE_JOINT_INDEX 3
-#define LEFT_LEG_KNEE_JOINT_INDEX 9
-#define RIGHT_LEG_ANKLE_Y_JOINT_INDEX 4
-#define LEFT_LEG_ANKLE_Y_JOINT_INDEX 10
-// 10dof
-//#define RIGHT_LEG_KNEE_JOINT_INDEX 3
-//#define LEFT_LEG_KNEE_JOINT_INDEX 8
-//#define RIGHT_LEG_ANKLE_Y_JOINT_INDEX 4
-//#define LEFT_LEG_ANKLE_Y_JOINT_INDEX 9
-
 #define D2R M_PI/180.0
 #define R2D 180.0/M_PI
 

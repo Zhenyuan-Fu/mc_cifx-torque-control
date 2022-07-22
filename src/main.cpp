@@ -68,14 +68,12 @@ std::array<ForceFilter, ForceSensor_COUNT> forceFilters;
 std::map<std::string, sva::ForceVecd> wrenches;
 // arm
 // joints kp kd setting (all same now)
-//double joints_kp = 220;
-//double joints_kd = 14;
+double joints_kp = 220;
+double joints_kd = 12;
 // ankle
-double joints_kp = 100;
-double joints_kd = 5.;
 
 // Safety parameter: if the difference between the command and the encoder exceeds this, servo-off
-static constexpr double JOINT_MAX_ERROR = 10; // degree
+static constexpr double JOINT_MAX_ERROR = 15; // degree
 static constexpr size_t JOINT_MAX_ERROR_COUNT = 50;
 static size_t ERROR_COUNT[MOT_ID] = {0};
 
@@ -298,11 +296,11 @@ void ECatMasterDev_UnRegisterInEvent(CIFXHANDLE hChannel)
 //  controllerReady = true;
 //}
 
-double jointPD(double q_ref, double q, double qdot_ref, double qdot)
+double jointPD(double q_ref, double q, double qdot_ref, double qdot, double kp, double kd)
 {
   double p_error = q_ref -q;
   double v_error = qdot_ref - qdot;
-  double ret = (joints_kp * p_error + joints_kd * v_error);
+  double ret = (kp * p_error + kd * v_error);
   return ret;
 }
 
@@ -371,7 +369,58 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
       double q_ref = cifx_next_ctrl_q;
       double alpha_ref = cifx_next_ctrl_alpha;
 
-      double jCommand  = cifx_next_ctrl_torque + jointPD(q_ref, encoders[i], alpha_ref, velocities[i]);
+      double kp;
+      double kd;
+
+      switch (i)
+      {
+        case RIGHT_SHOULDER_JOINT_INDEX:
+          kp = joints_kp;
+          kd = joints_kd;
+          break;
+        case RIGHT_HIP_X_JOINT_INDEX:
+          kp = joints_kp;
+          kd = joints_kd;
+          break;
+        case RIGHT_HIP_Y_JOINT_INDEX:
+          kp = 220.0;
+          kd = 0.1;
+          break;
+        case RIGHT_LEG_KNEE_JOINT_INDEX:
+          kp = 60.0;
+          kd = 0.0001;
+          break;
+        case RIGHT_LEG_ANKLE_Y_JOINT_INDEX:
+          kp = 100.0;
+          kd = 5.0;
+          break;
+        // left
+        case LEFT_SHOULDER_JOINT_INDEX:
+          kp = joints_kp;
+          kd = joints_kd;
+          break;
+        case LEFT_HIP_X_JOINT_INDEX:
+          kp = joints_kp;
+          kd = joints_kd;
+          break;
+        case LEFT_HIP_Y_JOINT_INDEX:
+          kp = 220.0;
+          kd = 0.1;
+          break;
+        case LEFT_LEG_KNEE_JOINT_INDEX:
+          kp = 60.0;
+          kd = 0.0001;
+          break;
+        case LEFT_LEG_ANKLE_Y_JOINT_INDEX:
+          kp = 100.0;
+          kd = 5.0;
+          break;
+        default:
+          kp = joints_kp;
+          kd = joints_kd;
+          break;
+      }
+      double jCommand  = cifx_next_ctrl_torque + jointPD(q_ref, encoders[i], alpha_ref, velocities[i], kp, kd);
 
 //      if(jCommand > 150.0){
 //        jCommand = 150;
@@ -400,10 +449,10 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
       encoders_command[i] = motor;
       torques_command[i] = jCommand;
 
-      if(motor > 2000.0){
-        motor = 2000;
-      }else if(motor < -2000){
-        motor = -2000;
+      if(motor > 6000.0){
+        motor = 6000;
+      }else if(motor < -6000){
+        motor = -6000;
       }
 
       MOT_Send[i].Torque = motor;
