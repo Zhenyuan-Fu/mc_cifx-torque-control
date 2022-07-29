@@ -1,4 +1,3 @@
-#include "cifXEndianess.h"
 #include "cifxlinux.h"
 
 #include "Hil_Packet.h"
@@ -73,7 +72,7 @@ double joints_kd = 12;
 // ankle
 
 // Safety parameter: if the difference between the command and the encoder exceeds this, servo-off
-static constexpr double JOINT_MAX_ERROR = 15; // degree
+static constexpr double JOINT_MAX_ERROR = 180; // degree
 static constexpr size_t JOINT_MAX_ERROR_COUNT = 50;
 static size_t ERROR_COUNT[MOT_ID] = {0};
 
