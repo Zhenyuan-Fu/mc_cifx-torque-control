@@ -49,6 +49,7 @@ std::vector<double> encoders;
 std::vector<double> velocities;
 std::vector<double> encoders_command;
 std::vector<double> torques_command;
+std::vector<double> cifx_next_ctrl_torques;
 // !! Index to IMU name
 std::vector<std::string> bodySensors = {"Accelerometer"};
 mc_control::MCGlobalController::QuaternionMap bodySensorsOrientation;
@@ -72,7 +73,7 @@ double joints_kd = 12;
 // ankle
 
 // Safety parameter: if the difference between the command and the encoder exceeds this, servo-off
-static constexpr double JOINT_MAX_ERROR = 180; // degree
+static constexpr double JOINT_MAX_ERROR = 40; // degree
 static constexpr size_t JOINT_MAX_ERROR_COUNT = 50;
 static size_t ERROR_COUNT[MOT_ID] = {0};
 
@@ -382,16 +383,16 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
           kd = joints_kd;
           break;
         case RIGHT_HIP_Y_JOINT_INDEX:
-          kp = 220.0;
-          kd = 0.1;
+          kp = 270.0;
+          kd = 1.1;
           break;
         case RIGHT_LEG_KNEE_JOINT_INDEX:
-          kp = 60.0;
-          kd = 0.0001;
+          kp = 30.0;
+          kd = 0.0005;
           break;
         case RIGHT_LEG_ANKLE_Y_JOINT_INDEX:
-          kp = 100.0;
-          kd = 5.0;
+          kp = 30.0;
+          kd = 0.001;
           break;
         // left
         case LEFT_SHOULDER_JOINT_INDEX:
@@ -403,16 +404,16 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
           kd = joints_kd;
           break;
         case LEFT_HIP_Y_JOINT_INDEX:
-          kp = 220.0;
-          kd = 0.1;
+          kp = 270.0;
+          kd = 1.1;
           break;
         case LEFT_LEG_KNEE_JOINT_INDEX:
-          kp = 60.0;
-          kd = 0.0001;
+          kp = 30.0;
+          kd = 0.0005;
           break;
         case LEFT_LEG_ANKLE_Y_JOINT_INDEX:
-          kp = 100.0;
-          kd = 5.0;
+          kp = 30.0;
+          kd = 0.001;
           break;
         default:
           kp = joints_kp;
@@ -420,12 +421,6 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
           break;
       }
       double jCommand  = cifx_next_ctrl_torque + jointPD(q_ref, encoders[i], alpha_ref, velocities[i], kp, kd);
-
-//      if(jCommand > 150.0){
-//        jCommand = 150;
-//      }else if(jCommand < -150){
-//        jCommand = -150;
-//      }
 
       double error = rad2deg(cifx_next_ctrl_q - encoders[i]);
 
@@ -447,11 +442,12 @@ void APIENTRY PdoInEventCallback(uint32_t /*ulNotification*/, uint32_t /*ulDataL
       auto motor = JointTorque2MotorCurrent(jCommand, i);
       encoders_command[i] = motor;
       torques_command[i] = jCommand;
+      cifx_next_ctrl_torques[i] = cifx_next_ctrl_torque;
 
-      if(motor > 6000.0){
-        motor = 6000;
-      }else if(motor < -6000){
-        motor = -6000;
+      if(motor > 20000.0){
+        motor = 20000;
+      }else if(motor < -20000){
+        motor = -20000;
       }
 
       MOT_Send[i].Torque = motor;
@@ -612,6 +608,8 @@ int main()
   encoders.resize(controller->robot().refJointOrder().size());
   encoders_command.resize(controller->robot().refJointOrder().size());
   torques_command.resize(controller->robot().refJointOrder().size());
+  cifx_next_ctrl_torques.resize(controller->robot().refJointOrder().size());
+
   velocities.resize(controller->robot().refJointOrder().size());
   currents.resize(controller->robot().refJointOrder().size());
   torques.resize(controller->robot().refJointOrder().size());
@@ -620,6 +618,7 @@ int main()
   controller->controller().logger().addLogEntry("torqueIn", [&]() -> const std::vector<double> & { return torques; });
   controller->controller().logger().addLogEntry("motorOut", [&]() -> const std::vector<double> & { return encoders_command; });
   controller->controller().logger().addLogEntry("torqueCmdOut", [&]() -> const std::vector<double> & { return torques_command; });
+  controller->controller().logger().addLogEntry("cifx_next_ctrl_torques", [&]() -> const std::vector<double> & { return cifx_next_ctrl_torques; });
 
   //
   controller->controller().logger().addLogEntry("IMU_roll", []() { return IMU_Recive[0].dwRoll; });
